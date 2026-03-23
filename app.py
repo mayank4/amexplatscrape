@@ -1,41 +1,62 @@
 import streamlit as st
 import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 from textblob import TextBlob
-from scraper_logic import scrape_reddit
+import time
 
-st.set_page_config(page_title="Brand Churn Scout", page_icon="🕵️")
-st.title("🕵️ Brand Churn Scout")
-st.write("Analyzing Reddit 'Goldmines' for churn insights.")
+# --- 1. PRO SCRAPER SETUP ---
+def get_driver():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    # This is the key for Cloud: it uses the pre-installed Chromium
+    return webdriver.Chrome(options=options)
 
-brand = st.text_input("Enter Brand (e.g., Lululemon, Amex):")
-
-if st.button("Generate Insight Report"):
-    with st.spinner(f"Scouring Reddit for {brand} data..."):
-        raw_text = scrape_reddit(brand)
+def scrape_reddit(brand):
+    driver = get_driver()
+    search_url = f"https://www.reddit.com/search/?q={brand}+cancelled+complaint"
+    
+    try:
+        driver.get(search_url)
+        time.sleep(5)  # Wait for dynamic content
         
-        if raw_text:
-            # Process Sentiment
-            processed_data = []
-            for text in raw_text:
-                score = TextBlob(text).sentiment.polarity
-                # Tagging logic
-                tag = "General"
-                if any(word in text.lower() for word in ["price", "fee", "cost"]): tag = "Cost"
-                if any(word in text.lower() for word in ["quality", "rip", "break"]): tag = "Product"
+        # Target post titles (Reddit uses h3 for titles in search)
+        elements = driver.find_elements(By.TAG_NAME, "h3")
+        titles = [el.text for el in elements if len(el.text) > 5]
+        return titles
+    finally:
+        driver.quit()
+
+# --- 2. STREAMLIT DASHBOARD ---
+st.title("🕵️ Brand Churn Insights")
+
+brand_input = st.text_input("Enter Brand (e.g., Lululemon, Amex):")
+
+if st.button("Run Analysis"):
+    if brand_input:
+        with st.spinner(f"Searching for {brand_input} churn data..."):
+            data = scrape_reddit(brand_input)
+            
+            if data:
+                # Analysis Logic
+                results = []
+                for text in data:
+                    sentiment = TextBlob(text).sentiment.polarity
+                    results.append({"Insight": text, "Sentiment": sentiment})
                 
-                processed_data.append({"Insight": text, "Sentiment": score, "Category": tag})
-            
-            df = pd.DataFrame(processed_data)
-            
-            # Display Metrics
-            avg_sent = df['Sentiment'].mean()
-            st.metric("Overall Brand Sentiment", f"{avg_sent:.2f}")
-            
-            # Display Charts
-            st.subheader("Churn Categories")
-            st.bar_chart(df['Category'].value_counts())
-            
-            st.subheader("Raw Insights")
-            st.dataframe(df)
-        else:
-            st.error("No data found. Try a different keyword!")
+                df = pd.DataFrame(results)
+                
+                # Visualizations
+                st.subheader(f"Results for {brand_input}")
+                st.metric("Avg Sentiment Score", f"{df['Sentiment'].mean():.2f}")
+                st.dataframe(df)
+                st.bar_chart(df['Sentiment'])
+            else:
+                st.warning("No data found. Reddit might be blocking the request or the search returned 0 results.")
+    else:
+        st.error("Please enter a brand name.")
