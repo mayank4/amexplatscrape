@@ -4,7 +4,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from textblob import TextBlob
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
 
 # --- 1. PRO SCRAPER SETUP ---
@@ -20,18 +21,35 @@ def get_driver():
     
     return webdriver.Chrome(options=options)
 
-def scrape_reddit(brand):
-    driver = get_driver()
-    search_url = f"https://www.reddit.com/search/?q={brand}+cancelled+complaint"
+def scrape_reddit(brand_name):
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    # 🕵️ Add a real browser User-Agent to prevent blocks
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+    
+    # Path for Streamlit Cloud
+    chrome_options.binary_location = "/usr/bin/chromium"
+    service = Service("/usr/bin/chromedriver")
+    
+    driver = webdriver.Chrome(service=service, options=chrome_options)
     
     try:
-        driver.get(search_url)
-        time.sleep(5)  # Wait for dynamic content
+        # Search specifically for the brand and the word 'cancelled'
+        url = f"https://www.reddit.com/search/?q={brand_name}+cancelled"
+        driver.get(url)
         
-        # Target post titles (Reddit uses h3 for titles in search)
-        elements = driver.find_elements(By.TAG_NAME, "h3")
+        # ⏳ Wait up to 10 seconds for the titles to appear
+        wait = WebDriverWait(driver, 10)
+        # Reddit search results often use <a> tags for titles
+        elements = wait.until(EC.presence_of_all_elements_with_elements_located((By.CSS_SELECTOR, 'a[slot="title"]')))
+        
         titles = [el.text for el in elements if len(el.text) > 5]
         return titles
+    except Exception as e:
+        print(f"Error: {e}")
+        return []
     finally:
         driver.quit()
 
