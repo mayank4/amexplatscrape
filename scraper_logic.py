@@ -6,13 +6,15 @@ from selenium.webdriver.common.by import By
 import time
 
 def scrape_reddit(brand_name):
-    # Set up headless mode for hosting
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    # On Streamlit Cloud, we don't need ChromeDriverManager. 
+    # The browser is installed at a standard system path.
+    driver = webdriver.Chrome(options=chrome_options)
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
     # Target the 'Search' page for the specific brand
     search_url = f"https://www.reddit.com/search/?q={brand_name}+cancelled+worth+it"
